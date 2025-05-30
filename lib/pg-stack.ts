@@ -19,7 +19,7 @@ export class PGStack extends Stack {
     const certificate = Certificate.fromCertificateArn(
       this,
       "PGCert",
-      "arn:aws:acm:us-east-1:807385937075:certificate/07cf73d6-aded-4e7d-8ba1-12e5382354f3"
+      "arn:aws:acm:us-east-1:807385937075:certificate/4f047a25-c2e5-42ec-8300-27035d5f76f3"
     );
 
     const apiGateway = new ApiGateway(this, "PGApi", {

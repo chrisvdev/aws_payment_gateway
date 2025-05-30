@@ -5,8 +5,14 @@ import {
   ViewerProtocolPolicy,
   CachePolicy,
   AllowedMethods,
+  CfnOriginAccessControl,
+  OriginAccessControlBase,
+  OriginAccessControlOriginType,
+  CfnDistribution,
+  OriginProtocolPolicy,
+  OriginRequestPolicy,
 } from "aws-cdk-lib/aws-cloudfront";
-import { HttpOrigin } from "aws-cdk-lib/aws-cloudfront-origins";
+import { HttpOrigin, S3Origin } from "aws-cdk-lib/aws-cloudfront-origins";
 import { type ICertificate } from "aws-cdk-lib/aws-certificatemanager";
 import { BucketDeployment, Source } from "aws-cdk-lib/aws-s3-deployment";
 import { type RestApi } from "aws-cdk-lib/aws-apigateway";
@@ -48,7 +54,11 @@ export class WebDistribution extends Construct {
     // Create CloudFront distribution
     const distribution = new Distribution(this, "WebDistribution", {
       defaultBehavior: {
-        origin: S3BucketOrigin.withOriginAccessControl(bucket),
+        origin: new HttpOrigin(
+          bucket.bucketWebsiteDomainName,{
+            protocolPolicy: OriginProtocolPolicy.HTTP_ONLY
+          }
+        ),
         viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         cachePolicy: CachePolicy.CACHING_OPTIMIZED,
         allowedMethods: AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
@@ -63,6 +73,7 @@ export class WebDistribution extends Construct {
             }
           ),
           viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          originRequestPolicy: OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
           cachePolicy: CachePolicy.CACHING_DISABLED,
           allowedMethods: AllowedMethods.ALLOW_ALL,
           compress: true,
@@ -89,18 +100,5 @@ export class WebDistribution extends Construct {
       distribution,
       distributionPaths: ["/*"],
     });
-
-    bucket.addToResourcePolicy(
-      new PolicyStatement({
-        actions: ["s3:GetObject"],
-        resources: [`${bucket.bucketArn}/*`],
-        principals: [new ServicePrincipal("cloudfront.amazonaws.com")],
-        conditions: {
-          StringEquals: {
-            "AWS:SourceArn": `arn:aws:cloudfront::${Aws.ACCOUNT_ID}:distribution/${distribution.distributionId}`,
-          },
-        },
-      })
-    );
   }
 }
