@@ -1,26 +1,23 @@
-import { StackProps, Aws } from "aws-cdk-lib";
+import { StackProps, Fn, CfnOutput } from "aws-cdk-lib";
 import { type Bucket } from "aws-cdk-lib/aws-s3";
 import {
   Distribution,
   ViewerProtocolPolicy,
   CachePolicy,
   AllowedMethods,
-  CfnOriginAccessControl,
-  OriginAccessControlBase,
-  OriginAccessControlOriginType,
-  CfnDistribution,
   OriginProtocolPolicy,
   OriginRequestPolicy,
+  OriginRequestCookieBehavior,
+  OriginRequestQueryStringBehavior,
+  OriginRequestHeaderBehavior,
 } from "aws-cdk-lib/aws-cloudfront";
-import { HttpOrigin, S3Origin } from "aws-cdk-lib/aws-cloudfront-origins";
+import { HttpOrigin } from "aws-cdk-lib/aws-cloudfront-origins";
 import { type ICertificate } from "aws-cdk-lib/aws-certificatemanager";
 import { BucketDeployment, Source } from "aws-cdk-lib/aws-s3-deployment";
 import { type RestApi } from "aws-cdk-lib/aws-apigateway";
 import { Construct } from "constructs";
 import { HostedZone, ARecord, RecordTarget } from "aws-cdk-lib/aws-route53";
 import { CloudFrontTarget } from "aws-cdk-lib/aws-route53-targets";
-import { S3BucketOrigin } from "aws-cdk-lib/aws-cloudfront-origins";
-import { PolicyStatement, ServicePrincipal } from "aws-cdk-lib/aws-iam";
 
 interface WebDistributionProps extends StackProps {
   bucket: Bucket;
@@ -54,11 +51,9 @@ export class WebDistribution extends Construct {
     // Create CloudFront distribution
     const distribution = new Distribution(this, "WebDistribution", {
       defaultBehavior: {
-        origin: new HttpOrigin(
-          bucket.bucketWebsiteDomainName,{
-            protocolPolicy: OriginProtocolPolicy.HTTP_ONLY
-          }
-        ),
+        origin: new HttpOrigin(bucket.bucketWebsiteDomainName, {
+          protocolPolicy: OriginProtocolPolicy.HTTP_ONLY,
+        }),
         viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         cachePolicy: CachePolicy.CACHING_OPTIMIZED,
         allowedMethods: AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
@@ -66,14 +61,15 @@ export class WebDistribution extends Construct {
       },
       additionalBehaviors: {
         "/api/*": {
-          origin: new HttpOrigin(
-            `${apiGateway.restApiId}.execute-api.${Aws.REGION}.amazonaws.com`,
-            {
-              originPath: `/${apiGateway.deploymentStage.stageName}`,
-            }
-          ),
+          origin: new HttpOrigin(Fn.select(2, Fn.split("/", apiGateway.url))),
           viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-          originRequestPolicy: OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+          originRequestPolicy:
+            new OriginRequestPolicy(this, "APIOriginRequestPolicy", {
+              cookieBehavior: OriginRequestCookieBehavior.all(),
+              queryStringBehavior: OriginRequestQueryStringBehavior.all(),
+              headerBehavior: OriginRequestHeaderBehavior.allowList("x-api-key"),
+              comment: "Origin request policy for API Gateway",
+            }),
           cachePolicy: CachePolicy.CACHING_DISABLED,
           allowedMethods: AllowedMethods.ALLOW_ALL,
           compress: true,
@@ -99,6 +95,13 @@ export class WebDistribution extends Construct {
       destinationBucket: bucket,
       distribution,
       distributionPaths: ["/*"],
+    });
+
+    new CfnOutput(this, "CloudFrontURL", {
+      value: `https://${distribution.domainName}`,
+    });
+    new CfnOutput(this, "CloudFrontAliasURL", {
+      value: `https://${subdomain}.${baseDomain}`,
     });
   }
 }

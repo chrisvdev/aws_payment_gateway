@@ -5,7 +5,13 @@ import * as route53Targets from "aws-cdk-lib/aws-route53-targets";
 import * as certificateManager from "aws-cdk-lib/aws-certificatemanager";
 import * as logs from "aws-cdk-lib/aws-logs";
 import { type IFunction } from "aws-cdk-lib/aws-lambda";
-import { JsonSchema, JsonSchemaType } from "aws-cdk-lib/aws-apigateway";
+import {
+  Cors,
+  JsonSchema,
+  JsonSchemaType,
+  Model,
+} from "aws-cdk-lib/aws-apigateway";
+import { ServicePrincipal } from "aws-cdk-lib/aws-iam";
 
 export type ApiGatewayProps = aws_apigateway.RestApiProps;
 type HTTPMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -13,7 +19,8 @@ type HTTPMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 export type Method = {
   type: HTTPMethod;
   APIKeyRequired?: boolean;
-  schema?: JsonSchema | null;
+  requestSchema?: JsonSchema | null;
+  responseSchema?: JsonSchema | null;
 };
 
 export type Methods = Method[];
@@ -25,7 +32,11 @@ export type RestAPI = Record<Path, Methods>;
 const baseDomain = "cloud.chrisvdev.com";
 const subdomain = "test-api";
 
-export class ApiGateway extends aws_apigateway.RestApi {  
+export class ApiGateway extends aws_apigateway.RestApi {
+  readonly requestValidatorBody: aws_apigateway.RequestValidator;
+  readonly requestValidatorParams: aws_apigateway.RequestValidator;
+  private badRequestErrorListDTO: Model;
+  private errorDTO: Model;
   /**
    * Constructor for ApiGateway.
    *
@@ -73,6 +84,58 @@ export class ApiGateway extends aws_apigateway.RestApi {
       ],
     });
     usagePlan.addApiKey(apiKey);
+
+    this.badRequestErrorListDTO = this.addModel("BadRequestErrorListDTO", {
+      contentType: "application/json",
+      schema: {
+        type: JsonSchemaType.OBJECT,
+        properties: {
+          errors: {
+            type: JsonSchemaType.ARRAY,
+            items: {
+              type: JsonSchemaType.OBJECT,
+              properties: {
+                code: {
+                  type: JsonSchemaType.STRING,
+                },
+                message: {
+                  type: JsonSchemaType.STRING,
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    this.errorDTO = this.addModel("ErrorDTO", {
+      contentType: "application/json",
+      schema: {
+        type: JsonSchemaType.OBJECT,
+        properties: {
+          code: {
+            type: JsonSchemaType.STRING,
+          },
+          message: {
+            type: JsonSchemaType.STRING,
+          },
+        },
+      },
+    });
+    this.requestValidatorBody = this.addRequestValidator(
+      `${id}-request-validator-body`,
+      {
+        validateRequestBody: true,
+        validateRequestParameters: false,
+      }
+    );
+    this.requestValidatorParams = this.addRequestValidator(
+      `${id}-request-validator-params`,
+      {
+        validateRequestBody: false,
+        validateRequestParameters: true,
+      }
+    );
   }
 
   /**
@@ -87,16 +150,44 @@ export class ApiGateway extends aws_apigateway.RestApi {
    * @param RestAPI the RestAPI to add the lambda function to
    */
   addLambdaIntegration(lambda: IFunction, RestAPI: RestAPI) {
+    lambda.addPermission(`${lambda.node.id}-Invoke`, {
+      principal: new ServicePrincipal("apigateway.amazonaws.com"),
+      sourceArn: this.arnForExecuteApi(),
+      action: "lambda:InvokeFunction",
+    });
+    const responseParameters = {
+      "method.response.header.Access-Control-Allow-Headers": true,
+      "method.response.header.Access-Control-Allow-Methods": true,
+      "method.response.header.Access-Control-Allow-Origin": true,
+    };
     for (const [path, methods] of Object.entries(RestAPI)) {
       const resource = this.root.resourceForPath(path);
+      resource.addCorsPreflight({
+        allowOrigins: Cors.ALL_ORIGINS,
+        allowMethods: Cors.ALL_METHODS,
+        allowHeaders: [
+          "Content-Type",
+          "Authorization",
+          "X-Amz-Date",
+          "X-Amz-Security-Token",
+          "X-Amz-User-Agent",
+          "X-Api-Key",
+        ],
+        allowCredentials: true,
+      });
       for (const method of methods) {
         resource.addMethod(
           method.type,
           new aws_apigateway.LambdaIntegration(lambda, { proxy: true }),
           {
             apiKeyRequired: method.APIKeyRequired ? true : false,
+            requestValidator: method.requestSchema
+              ? method.type === "GET"
+                ? this.requestValidatorParams
+                : this.requestValidatorBody
+              : undefined,
             requestModels: {
-              "application/json": method.schema
+              "application/json": method.requestSchema
                 ? this.addModel(
                     `${path
                       .split("/")
@@ -105,11 +196,54 @@ export class ApiGateway extends aws_apigateway.RestApi {
                       method.type.charAt(0).toUpperCase() + method.type.slice(1)
                     }`.slice(-50),
                     {
-                      schema: method.schema,
+                      schema: method.requestSchema,
                     }
                   )
                 : aws_apigateway.Model.EMPTY_MODEL,
             },
+            methodResponses: [
+              {
+                statusCode: "200",
+                responseParameters,
+                responseModels: {
+                  "application/json": method.responseSchema
+                    ? this.addModel(
+                        `${path
+                          .split("/")
+                          .map((e) => e.charAt(0).toUpperCase() + e.slice(1))
+                          .join("")}${
+                          method.type.charAt(0).toUpperCase() +
+                          method.type.slice(1)
+                        }`.slice(-50),
+                        {
+                          schema: method.responseSchema,
+                        }
+                      )
+                    : aws_apigateway.Model.EMPTY_MODEL,
+                },
+              },
+              {
+                statusCode: "400",
+                responseParameters,
+                responseModels: {
+                  "application/json": this.badRequestErrorListDTO,
+                },
+              },
+              {
+                statusCode: "403",
+                responseParameters,
+                responseModels: {
+                  "application/json": this.errorDTO,
+                },
+              },
+              {
+                statusCode: "409",
+                responseParameters,
+                responseModels: {
+                  "application/json": this.errorDTO,
+                },
+              },
+            ],
           }
         );
       }
