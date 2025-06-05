@@ -16,14 +16,17 @@ import { type ICertificate } from "aws-cdk-lib/aws-certificatemanager";
 import { BucketDeployment, Source } from "aws-cdk-lib/aws-s3-deployment";
 import { type RestApi } from "aws-cdk-lib/aws-apigateway";
 import { Construct } from "constructs";
-import { HostedZone, ARecord, RecordTarget } from "aws-cdk-lib/aws-route53";
+import { ARecord, RecordTarget, IHostedZone } from "aws-cdk-lib/aws-route53";
 import { CloudFrontTarget } from "aws-cdk-lib/aws-route53-targets";
 
 interface WebDistributionProps extends StackProps {
   bucket: Bucket;
   apiGateway: RestApi;
-  certificate: ICertificate;
-  subdomain: string;
+  customDomain: {
+    certificate: ICertificate;
+    hostedZone: IHostedZone;
+    subdomain: string;
+  };
 }
 
 const baseDomain = "cloud.chrisvdev.com";
@@ -46,7 +49,11 @@ export class WebDistribution extends Construct {
   constructor(scope: Construct, id: string, props: WebDistributionProps) {
     super(scope, id);
 
-    const { bucket, apiGateway, certificate, subdomain } = props;
+    const {
+      bucket,
+      apiGateway,
+      customDomain: { certificate, hostedZone, subdomain },
+    } = props;
 
     // Create CloudFront distribution
     const distribution = new Distribution(this, "WebDistribution", {
@@ -61,15 +68,21 @@ export class WebDistribution extends Construct {
       },
       additionalBehaviors: {
         "/api/*": {
-          origin: new HttpOrigin(Fn.select(2, Fn.split("/", apiGateway.url))),
+          origin: new HttpOrigin(Fn.select(2, Fn.split("/", apiGateway.url)), {
+            originPath: `/${Fn.select(3, Fn.split("/", apiGateway.url))}`,
+          }),
           viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-          originRequestPolicy:
-            new OriginRequestPolicy(this, "APIOriginRequestPolicy", {
+          originRequestPolicy: new OriginRequestPolicy(
+            this,
+            "APIOriginRequestPolicy",
+            {
               cookieBehavior: OriginRequestCookieBehavior.all(),
               queryStringBehavior: OriginRequestQueryStringBehavior.all(),
-              headerBehavior: OriginRequestHeaderBehavior.allowList("x-api-key"),
+              headerBehavior:
+                OriginRequestHeaderBehavior.allowList("x-api-key"),
               comment: "Origin request policy for API Gateway",
-            }),
+            }
+          ),
           cachePolicy: CachePolicy.CACHING_DISABLED,
           allowedMethods: AllowedMethods.ALLOW_ALL,
           compress: true,
@@ -77,10 +90,6 @@ export class WebDistribution extends Construct {
       },
       domainNames: [`${subdomain}.${baseDomain}`],
       certificate: certificate,
-    });
-
-    const hostedZone = HostedZone.fromLookup(this, "HostedZone", {
-      domainName: baseDomain,
     });
 
     new ARecord(this, "PgAliasRecord", {
@@ -97,6 +106,7 @@ export class WebDistribution extends Construct {
       distributionPaths: ["/*"],
     });
 
+    // Output CloudFront URLs
     new CfnOutput(this, "CloudFrontURL", {
       value: `https://${distribution.domainName}`,
     });

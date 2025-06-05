@@ -1,9 +1,8 @@
-import { aws_apigateway, RemovalPolicy } from "aws-cdk-lib";
+import { aws_apigateway, CfnOutput, RemovalPolicy, Stack } from "aws-cdk-lib";
 import { Construct } from "constructs";
-import * as route53 from "aws-cdk-lib/aws-route53";
-import * as route53Targets from "aws-cdk-lib/aws-route53-targets";
-import * as certificateManager from "aws-cdk-lib/aws-certificatemanager";
-import * as logs from "aws-cdk-lib/aws-logs";
+import { ARecord, IHostedZone, RecordTarget } from "aws-cdk-lib/aws-route53";
+import { ICertificate } from "aws-cdk-lib/aws-certificatemanager";
+import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { type IFunction } from "aws-cdk-lib/aws-lambda";
 import {
   Cors,
@@ -12,8 +11,16 @@ import {
   Model,
 } from "aws-cdk-lib/aws-apigateway";
 import { ServicePrincipal } from "aws-cdk-lib/aws-iam";
+import { ApiGateway as ApiGatewayTarget } from "aws-cdk-lib/aws-route53-targets";
 
-export type ApiGatewayProps = aws_apigateway.RestApiProps;
+export interface ApiGatewayProps extends aws_apigateway.RestApiProps {
+  customDomain?: {
+    certificate: ICertificate;
+    hostedZone: IHostedZone;
+    subdomain: string;
+  };
+}
+
 type HTTPMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 export type Method = {
@@ -28,9 +35,6 @@ export type Methods = Method[];
 export type Path = string;
 
 export type RestAPI = Record<Path, Methods>;
-
-const baseDomain = "cloud.chrisvdev.com";
-const subdomain = "test-api";
 
 export class ApiGateway extends aws_apigateway.RestApi {
   readonly requestValidatorBody: aws_apigateway.RequestValidator;
@@ -49,10 +53,10 @@ export class ApiGateway extends aws_apigateway.RestApi {
    *   description.
    */
   constructor(scope: Construct, id: string, props: ApiGatewayProps) {
-    const logGroup = new logs.LogGroup(scope, `${id}-ApiGatewayAccessLogs`, {
+    const logGroup = new LogGroup(scope, `${id}-ApiGatewayAccessLogs`, {
       logGroupName: `/aws/apigateway/${id}-ApiGatewayAccessLogs`,
       removalPolicy: RemovalPolicy.DESTROY, // útil para desarrollo
-      retention: logs.RetentionDays.TWO_WEEKS,
+      retention: RetentionDays.TWO_WEEKS,
     });
     super(scope, id, {
       ...props,
@@ -136,6 +140,22 @@ export class ApiGateway extends aws_apigateway.RestApi {
         validateRequestParameters: true,
       }
     );
+
+    if (props.customDomain) {
+      const customDomain = `${props.customDomain.subdomain}.${props.customDomain.hostedZone.zoneName}`;
+      this.addDomainName(`${id}-custom-domain`, {
+        domainName: customDomain,
+        certificate: props.customDomain.certificate,
+      });
+      new ARecord(scope, `${id}-custom-domain-a-record`, {
+        zone: props.customDomain.hostedZone,
+        recordName: props.customDomain.subdomain,
+        target: RecordTarget.fromAlias(new ApiGatewayTarget(this)),
+      });
+      new CfnOutput(this, `${id}-ApiGatewayCustomURL`, {
+        value: `https://${customDomain}`,
+      });
+    }
   }
 
   /**

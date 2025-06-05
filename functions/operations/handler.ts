@@ -1,8 +1,10 @@
-import { ScheduledEvent } from 'aws-lambda';
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 
-export const handler = async (event: ScheduledEvent): Promise<void> => {
-  const timestamp = new Date().toISOString();
-  console.log('Ran at', timestamp);
+export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const response = {
+    statusCode: 200,
+    body: JSON.stringify({ message: 'Hello from Lambda!' }),
+  };
 
-  return;
+  return response;
 };
