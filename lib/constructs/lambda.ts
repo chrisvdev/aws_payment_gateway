@@ -60,6 +60,5 @@ export class BaseLambda extends aws_lambda_nodejs.NodejsFunction {
       retention: RetentionDays.TWO_WEEKS,
       removalPolicy: RemovalPolicy.DESTROY
     });
-    // this.logGroup.applyRemovalPolicy(RemovalPolicy.DESTROY);
   }
 }

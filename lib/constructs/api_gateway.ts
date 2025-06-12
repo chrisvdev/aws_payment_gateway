@@ -12,6 +12,7 @@ import {
 } from "aws-cdk-lib/aws-apigateway";
 import { ServicePrincipal } from "aws-cdk-lib/aws-iam";
 import { ApiGateway as ApiGatewayTarget } from "aws-cdk-lib/aws-route53-targets";
+import { LambdaAuthorizer } from "./lambda_apigateway_authorizer";
 
 export interface ApiGatewayProps extends aws_apigateway.RestApiProps {
   customDomain?: {
@@ -26,6 +27,7 @@ type HTTPMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 export type Method = {
   type: HTTPMethod;
   APIKeyRequired?: boolean;
+  authorizer?: boolean;
   requestSchema?: JsonSchema | null;
   responseSchema?: JsonSchema | null;
 };
@@ -41,6 +43,7 @@ export class ApiGateway extends aws_apigateway.RestApi {
   readonly requestValidatorParams: aws_apigateway.RequestValidator;
   private badRequestErrorListDTO: Model;
   private errorDTO: Model;
+  private authorizer: LambdaAuthorizer | null = null;
   /**
    * Constructor for ApiGateway.
    *
@@ -158,6 +161,10 @@ export class ApiGateway extends aws_apigateway.RestApi {
     }
   }
 
+  set lambdaAuthorizer(lambdaAuthorizer: LambdaAuthorizer) {
+    this.authorizer = lambdaAuthorizer;
+  }
+
   /**
    * Adds a lambda function as an integration to the API with the given
    * RestAPI. The RestAPI is an object where the keys are paths and the values
@@ -201,6 +208,10 @@ export class ApiGateway extends aws_apigateway.RestApi {
           new aws_apigateway.LambdaIntegration(lambda, { proxy: true }),
           {
             apiKeyRequired: method.APIKeyRequired ? true : false,
+            authorizer:
+              this.authorizer && method.authorizer
+                ? this.authorizer
+                : undefined,
             requestValidator: method.requestSchema
               ? method.type === "GET"
                 ? this.requestValidatorParams

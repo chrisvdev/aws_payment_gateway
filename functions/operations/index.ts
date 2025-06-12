@@ -7,12 +7,12 @@ const operationsDefinition: RestLambdaDefinition = {
   entry: path.join(__dirname, "handler.ts"),
   restAPI: {
     "/v1/operations/products": [
-      { type: "GET", APIKeyRequired: true, requestSchema: null },
+      { type: "GET", authorizer: true, requestSchema: null },
     ],
     "/v1/operations/purchase": [
-      { type: "GET", APIKeyRequired: true, requestSchema: null },
-      { type: "POST", APIKeyRequired: true, requestSchema: null },
-      { type: "PATCH", APIKeyRequired: true, requestSchema: null },
+      { type: "GET", authorizer: true, requestSchema: null },
+      { type: "POST", authorizer: true, requestSchema: null },
+      { type: "PATCH", authorizer: true, requestSchema: null },
     ],
   },
 };

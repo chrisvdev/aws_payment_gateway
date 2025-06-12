@@ -6,6 +6,7 @@ import { OperationsLambda } from "./constructs/functions/operations";
 import { ApiGateway } from "./constructs/api_gateway";
 import { StaticS3Site } from "./constructs/static_s3_site";
 import { WebDistribution } from "./constructs/web_distribution";
+import { ApiGatewayAuthorizer } from "./constructs/functions/apig_authorizer";
 /* 
 import { Rule, Schedule } from "aws-cdk-lib/aws-events";
 import { LambdaFunction } from "aws-cdk-lib/aws-events-targets";
@@ -24,6 +25,8 @@ export class PGStack extends BaseStack {
         subdomain: "pg-api",
       }
     });
+
+    apiGateway.lambdaAuthorizer = new ApiGatewayAuthorizer(this, "PGAuthorizer")
 
     const staticSiteBucket = new StaticS3Site(this, "StaticSiteBucket", {});
 
