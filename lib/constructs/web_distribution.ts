@@ -75,7 +75,7 @@ export class WebDistribution extends constructs.Construct {
       3,
       cdkLib.Fn.split("/", apiGateway.url)
     );
-    const originRequestPolicy = new cloudfront.OriginRequestPolicy(
+    /* const originRequestPolicy = new cloudfront.OriginRequestPolicy(
       this,
       "APIOriginRequestPolicy",
       {
@@ -90,57 +90,66 @@ export class WebDistribution extends constructs.Construct {
         ),
         comment: "Origin request policy for API Gateway",
       }
-    );
-    const cachePolicy = new cloudfront.CachePolicy(
+    ); */
+    /* const cachePolicy = new cloudfront.CachePolicy
+    (
       this,
       "APIOriginCachePolicy",
       {
         cachePolicyName: "APIOriginCachePolicy",
         comment: "Cache policy for API Gateway",
-        defaultTtl: cdkLib.Duration.seconds(1),
-        minTtl: cdkLib.Duration.seconds(1),
-        maxTtl: cdkLib.Duration.seconds(5),
-        headerBehavior: cloudfront.CacheHeaderBehavior.allowList(
+        defaultTtl: cdkLib.Duration.seconds(0),
+        minTtl: cdkLib.Duration.seconds(0),
+        maxTtl: cdkLib.Duration.seconds(0),
+        headerBehavior: cloudfront.CacheHeaderBehavior.none(),
+        /* .allowList(
           "Content-Type",
           "Accept",
           "User-Agent",
           "x-pg-token"
-        ),
+        ), 
+        enableAcceptEncodingBrotli: true,
+        enableAcceptEncodingGzip: true,*/ /*
       }
-    );
+    ) */
 
+    // API Gateway REST API behavior
     Object.entries(apiGateway.restAPI).forEach(([path, methods]) => {
       additionalBehaviors[path] = {
         origin: new cloudfrontOrigins.HttpOrigin(apiGatewayDomain, {
           originPath: `/${apiGatewayStage}`,
         }),
-        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-        originRequestPolicy,
-        cachePolicy,
+        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.HTTPS_ONLY,
+        originRequestPolicy:
+          cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+        responseHeadersPolicy:
+          cloudfront.ResponseHeadersPolicy.CORS_ALLOW_ALL_ORIGINS,
+        cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
         allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
         compress: true,
       };
     });
 
+    // S3 Static Website behavior
+    const defaultBehavior: cloudfront.BehaviorOptions = {
+      origin: new cloudfrontOrigins.HttpOrigin(bucket.bucketWebsiteDomainName, {
+        protocolPolicy: cloudfront.OriginProtocolPolicy.HTTP_ONLY,
+      }),
+      viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+      cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+      allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
+      compress: true,
+    };
+
     // Create CloudFront distribution
     const distribution = new cloudfront.Distribution(this, "WebDistribution", {
       logBucket: loggingBucket,
       logFilePrefix: "cloudfront-logs/",
-      defaultBehavior: {
-        origin: new cloudfrontOrigins.HttpOrigin(
-          bucket.bucketWebsiteDomainName,
-          {
-            protocolPolicy: cloudfront.OriginProtocolPolicy.HTTP_ONLY,
-          }
-        ),
-        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-        cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
-        allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
-        compress: true,
-      },
+      defaultBehavior,
       additionalBehaviors,
       domainNames: [`${subdomain}.${baseDomain}`],
       certificate: certificate,
+      comment: `Web distribution for ${subdomain}.${baseDomain}`,
     });
 
     new route53.ARecord(this, "PgAliasRecord", {
