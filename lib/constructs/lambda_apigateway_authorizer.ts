@@ -1,20 +1,22 @@
 import { IdentitySource, RequestAuthorizer } from "aws-cdk-lib/aws-apigateway";
 import { Construct } from "constructs";
 import { BaseLambda } from "./lambda";
+import { Duration } from "aws-cdk-lib";
 
 export interface AuthorizerProps {
-  lambdaEntry?:string
+  lambdaEntry?: string;
 }
 
 export class LambdaAuthorizer extends RequestAuthorizer {
   constructor(scope: Construct, id: string, props: AuthorizerProps) {
     const authorizerLambda = new BaseLambda(scope, `${id}-AuthorizerLambda`, {
-      entry: props.lambdaEntry
+      entry: props.lambdaEntry,
     });
     super(scope, id, {
       ...props,
       handler: authorizerLambda,
-      identitySources: [IdentitySource.header('x-pg-token')]
+      identitySources: [IdentitySource.header("x-pg-token")],
+      resultsCacheTtl: Duration.seconds(300),
     });
   }
 }

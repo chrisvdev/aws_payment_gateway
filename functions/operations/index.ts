@@ -6,10 +6,10 @@ const __dirname = import.meta.dirname;
 const operationsDefinition: RestLambdaDefinition = {
   entry: path.join(__dirname, "handler.ts"),
   restAPI: {
-    "/v1/operations/products": [
+    "/api/v1/operations/products": [
       { type: "GET", authorizer: true, requestSchema: null },
     ],
-    "/v1/operations/purchase": [
+    "/api/v1/operations/purchase": [
       { type: "GET", authorizer: true, requestSchema: null },
       { type: "POST", authorizer: true, requestSchema: null },
       { type: "PATCH", authorizer: true, requestSchema: null },
