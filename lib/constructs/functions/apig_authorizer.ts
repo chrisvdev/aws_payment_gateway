@@ -1,12 +1,9 @@
-import { Construct } from "constructs";
-import {
-  LambdaAuthorizer,
-} from "../lambda_apigateway_authorizer";
-import { ResourceProps } from "aws-cdk-lib";
-import lambadAuthorizerDefinition from "@functions/lambda_authorizer";
+import * as constructs from "constructs";
+import { LambdaAuthorizer } from "../lambda_apigateway_authorizer.ts";
+import lambadAuthorizerDefinition from "../../../functions/lambda_authorizer/index.ts";
 
 export class ApiGatewayAuthorizer extends LambdaAuthorizer {
-  constructor(scope: Construct, id: string) {
+  constructor(scope: constructs.Construct, id: string) {
     super(scope, id, {
       lambdaEntry: lambadAuthorizerDefinition.entry,
     });

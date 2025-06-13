@@ -26,12 +26,6 @@
     "esModuleInterop": true,
     "allowImportingTsExtensions": true,
     "noEmit": true,
-    "paths": {
-      "@cdk_lib/*": ["./lib/*"],
-      "@cdk_constructs/*": ["./lib/constructs/*"],
-      "@functions/*": ["./functions/*"],
-      "@lib/*": ["./functions/lib/*"]
-    }
   },
   "exclude": [
     "node_modules",

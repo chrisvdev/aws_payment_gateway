@@ -1,7 +1,7 @@
-import { Construct } from "constructs";
-import { RestLambda } from "../rest_lambda";
-import operationsDefinition from "@functions/operations";
-import { type ApiGateway } from "@cdk_constructs/api_gateway";
+import * as constructs from "constructs";
+import { RestLambda } from "../rest_lambda.ts";
+import operationsDefinition from "../../../functions/operations/index.ts";
+import { type ApiGateway } from "../api_gateway.ts";
 // import * as lambda from 'aws-cdk-lib/aws-lambda'
 
 type OperationsLambdaProps = { apiGateway: ApiGateway };
@@ -15,13 +15,16 @@ export class OperationsLambda extends RestLambda {
    * @param props The properties of the OperationsLambda, such as the API Gateway it
    *   belongs to.
    */
-  constructor(scope: Construct, id: string, props: OperationsLambdaProps) {
+  constructor(
+    scope: constructs.Construct,
+    id: string,
+    props: OperationsLambdaProps
+  ) {
     super(scope, id, {
       entry: operationsDefinition.entry,
       apiGateway: props.apiGateway,
       restAPI: operationsDefinition.restAPI,
-      environment: {
-      },
+      environment: {},
     });
   }
 }

@@ -1,13 +1,8 @@
-import { RemovalPolicy } from "aws-cdk-lib";
-import {
-  Bucket,
-  BucketProps,
-  BlockPublicAccess,
-  BucketAccessControl,
-} from "aws-cdk-lib/aws-s3";
-import { Construct } from "constructs";
+import * as cdkLib from "aws-cdk-lib";
+import * as s3 from "aws-cdk-lib/aws-s3";
+import * as constructs from "constructs";
 
-export class StaticS3Site extends Bucket {
+export class StaticS3Site extends s3.Bucket {
   /**
    * Creates a new StaticS3Site instance, which represents an S3 bucket configured
    * to host a static website. The bucket has public read access, and both the
@@ -19,14 +14,14 @@ export class StaticS3Site extends Bucket {
    * @param props Additional bucket properties to customize the S3 bucket.
    */
 
-  constructor(scope: Construct, id: string, props: BucketProps) {
+  constructor(scope: constructs.Construct, id: string, props: s3.BucketProps) {
     super(scope, id, {
       websiteIndexDocument: "index.html",
       websiteErrorDocument: "index.html",
       publicReadAccess: true,
-      removalPolicy: RemovalPolicy.DESTROY,
+      removalPolicy: cdkLib.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
-      blockPublicAccess: new BlockPublicAccess({
+      blockPublicAccess: new s3.BlockPublicAccess({
         blockPublicAcls: false,
         blockPublicPolicy: false,
         ignorePublicAcls: false,

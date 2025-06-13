@@ -1,23 +1,18 @@
-import { aws_apigateway, CfnOutput, RemovalPolicy, Stack } from "aws-cdk-lib";
-import { Construct } from "constructs";
-import { ARecord, IHostedZone, RecordTarget } from "aws-cdk-lib/aws-route53";
-import { ICertificate } from "aws-cdk-lib/aws-certificatemanager";
-import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
-import { type IFunction } from "aws-cdk-lib/aws-lambda";
-import {
-  Cors,
-  JsonSchema,
-  JsonSchemaType,
-  Model,
-} from "aws-cdk-lib/aws-apigateway";
-import { ServicePrincipal } from "aws-cdk-lib/aws-iam";
-import { ApiGateway as ApiGatewayTarget } from "aws-cdk-lib/aws-route53-targets";
-import { LambdaAuthorizer } from "./lambda_apigateway_authorizer";
+import * as cdkLib from "aws-cdk-lib";
+import * as constructs from "constructs";
+import * as route53 from "aws-cdk-lib/aws-route53";
+import * as certificateManager from "aws-cdk-lib/aws-certificatemanager";
+import * as logs from "aws-cdk-lib/aws-logs";
+import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as apigateway from "aws-cdk-lib/aws-apigateway";
+import * as iam from "aws-cdk-lib/aws-iam";
+import * as route53Targets from "aws-cdk-lib/aws-route53-targets";
+import { LambdaAuthorizer } from "./lambda_apigateway_authorizer.ts";
 
-export interface ApiGatewayProps extends aws_apigateway.RestApiProps {
+export interface ApiGatewayProps extends cdkLib.aws_apigateway.RestApiProps {
   customDomain?: {
-    certificate: ICertificate;
-    hostedZone: IHostedZone;
+    certificate: certificateManager.ICertificate;
+    hostedZone: route53.IHostedZone;
     subdomain: string;
   };
 }
@@ -28,8 +23,8 @@ export type Method = {
   type: HTTPMethod;
   APIKeyRequired?: boolean;
   authorizer?: boolean;
-  requestSchema?: JsonSchema | null;
-  responseSchema?: JsonSchema | null;
+  requestSchema?: apigateway.JsonSchema | null;
+  responseSchema?: apigateway.JsonSchema | null;
 };
 
 export type Methods = Method[];
@@ -38,12 +33,13 @@ export type Path = string;
 
 export type RestAPI = Record<Path, Methods>;
 
-export class ApiGateway extends aws_apigateway.RestApi {
-  readonly requestValidatorBody: aws_apigateway.RequestValidator;
-  readonly requestValidatorParams: aws_apigateway.RequestValidator;
-  private badRequestErrorListDTO: Model;
-  private errorDTO: Model;
+export class ApiGateway extends cdkLib.aws_apigateway.RestApi {
+  readonly requestValidatorBody: cdkLib.aws_apigateway.RequestValidator;
+  readonly requestValidatorParams: cdkLib.aws_apigateway.RequestValidator;
+  private badRequestErrorListDTO: apigateway.Model;
+  private errorDTO: apigateway.Model;
   private authorizer: LambdaAuthorizer | null = null;
+  private api: RestAPI = {};
   /**
    * Constructor for ApiGateway.
    *
@@ -55,58 +51,63 @@ export class ApiGateway extends aws_apigateway.RestApi {
    * @param props The properties of the ApiGateway, such as the API name and
    *   description.
    */
-  constructor(scope: Construct, id: string, props: ApiGatewayProps) {
-    const logGroup = new LogGroup(scope, `${id}-ApiGatewayAccessLogs`, {
+  constructor(scope: constructs.Construct, id: string, props: ApiGatewayProps) {
+    const logGroup = new logs.LogGroup(scope, `${id}-ApiGatewayAccessLogs`, {
       logGroupName: `/aws/apigateway/${id}-ApiGatewayAccessLogs`,
-      removalPolicy: RemovalPolicy.DESTROY, // útil para desarrollo
-      retention: RetentionDays.TWO_WEEKS,
+      removalPolicy: cdkLib.RemovalPolicy.DESTROY, // útil para desarrollo
+      retention: logs.RetentionDays.TWO_WEEKS,
     });
     super(scope, id, {
       ...props,
       deployOptions: {
-        accessLogDestination: new aws_apigateway.LogGroupLogDestination(
+        accessLogDestination: new cdkLib.aws_apigateway.LogGroupLogDestination(
           logGroup
         ),
-        accessLogFormat: aws_apigateway.AccessLogFormat.jsonWithStandardFields({
-          caller: true,
-          httpMethod: true,
-          ip: true,
-          protocol: true,
-          requestTime: true,
-          resourcePath: true,
-          responseLength: true,
-          status: true,
-          user: true,
-        }),
+        accessLogFormat:
+          cdkLib.aws_apigateway.AccessLogFormat.jsonWithStandardFields({
+            caller: true,
+            httpMethod: true,
+            ip: true,
+            protocol: true,
+            requestTime: true,
+            resourcePath: true,
+            responseLength: true,
+            status: true,
+            user: true,
+          }),
       },
       cloudWatchRole: true,
     });
     const apiKey = this.addApiKey(`${id}-api-key`);
-    const usagePlan = new aws_apigateway.UsagePlan(this, `${id}-usage-plan`, {
-      apiStages: [
-        {
-          api: this,
-          stage: this.deploymentStage,
-        },
-      ],
-    });
+    const usagePlan = new cdkLib.aws_apigateway.UsagePlan(
+      this,
+      `${id}-usage-plan`,
+      {
+        apiStages: [
+          {
+            api: this,
+            stage: this.deploymentStage,
+          },
+        ],
+      }
+    );
     usagePlan.addApiKey(apiKey);
 
     this.badRequestErrorListDTO = this.addModel("BadRequestErrorListDTO", {
       contentType: "application/json",
       schema: {
-        type: JsonSchemaType.OBJECT,
+        type: apigateway.JsonSchemaType.OBJECT,
         properties: {
           errors: {
-            type: JsonSchemaType.ARRAY,
+            type: apigateway.JsonSchemaType.ARRAY,
             items: {
-              type: JsonSchemaType.OBJECT,
+              type: apigateway.JsonSchemaType.OBJECT,
               properties: {
                 code: {
-                  type: JsonSchemaType.STRING,
+                  type: apigateway.JsonSchemaType.STRING,
                 },
                 message: {
-                  type: JsonSchemaType.STRING,
+                  type: apigateway.JsonSchemaType.STRING,
                 },
               },
             },
@@ -118,13 +119,13 @@ export class ApiGateway extends aws_apigateway.RestApi {
     this.errorDTO = this.addModel("ErrorDTO", {
       contentType: "application/json",
       schema: {
-        type: JsonSchemaType.OBJECT,
+        type: apigateway.JsonSchemaType.OBJECT,
         properties: {
           code: {
-            type: JsonSchemaType.STRING,
+            type: apigateway.JsonSchemaType.STRING,
           },
           message: {
-            type: JsonSchemaType.STRING,
+            type: apigateway.JsonSchemaType.STRING,
           },
         },
       },
@@ -150,12 +151,14 @@ export class ApiGateway extends aws_apigateway.RestApi {
         domainName: customDomain,
         certificate: props.customDomain.certificate,
       });
-      new ARecord(scope, `${id}-custom-domain-a-record`, {
+      new route53.ARecord(scope, `${id}-custom-domain-a-record`, {
         zone: props.customDomain.hostedZone,
         recordName: props.customDomain.subdomain,
-        target: RecordTarget.fromAlias(new ApiGatewayTarget(this)),
+        target: route53.RecordTarget.fromAlias(
+          new route53Targets.ApiGateway(this)
+        ),
       });
-      new CfnOutput(this, `${id}-ApiGatewayCustomURL`, {
+      new cdkLib.CfnOutput(this, `${id}-ApiGatewayCustomURL`, {
         value: `https://${customDomain}`,
       });
     }
@@ -163,6 +166,10 @@ export class ApiGateway extends aws_apigateway.RestApi {
 
   set lambdaAuthorizer(lambdaAuthorizer: LambdaAuthorizer) {
     this.authorizer = lambdaAuthorizer;
+  }
+
+  get restAPI(): RestAPI {
+    return this.api;
   }
 
   /**
@@ -176,9 +183,10 @@ export class ApiGateway extends aws_apigateway.RestApi {
    * @param lambda the lambda function to add as an integration
    * @param RestAPI the RestAPI to add the lambda function to
    */
-  addLambdaIntegration(lambda: IFunction, RestAPI: RestAPI) {
+  addLambdaIntegration(lambda: lambda.IFunction, RestAPI: RestAPI) {
+    Object.assign(this.api, RestAPI);
     lambda.addPermission(`${lambda.node.id}-Invoke`, {
-      principal: new ServicePrincipal("apigateway.amazonaws.com"),
+      principal: new iam.ServicePrincipal("apigateway.amazonaws.com"),
       sourceArn: this.arnForExecuteApi(),
       action: "lambda:InvokeFunction",
     });
@@ -190,8 +198,8 @@ export class ApiGateway extends aws_apigateway.RestApi {
     for (const [path, methods] of Object.entries(RestAPI)) {
       const resource = this.root.resourceForPath(path);
       resource.addCorsPreflight({
-        allowOrigins: Cors.ALL_ORIGINS,
-        allowMethods: Cors.ALL_METHODS,
+        allowOrigins: apigateway.Cors.ALL_ORIGINS,
+        allowMethods: apigateway.Cors.ALL_METHODS,
         allowHeaders: [
           "Content-Type",
           "Authorization",
@@ -199,13 +207,14 @@ export class ApiGateway extends aws_apigateway.RestApi {
           "X-Amz-Security-Token",
           "X-Amz-User-Agent",
           "X-Api-Key",
+          "x-pg-token",
         ],
         allowCredentials: true,
       });
       for (const method of methods) {
         resource.addMethod(
           method.type,
-          new aws_apigateway.LambdaIntegration(lambda, { proxy: true }),
+          new cdkLib.aws_apigateway.LambdaIntegration(lambda, { proxy: true }),
           {
             apiKeyRequired: method.APIKeyRequired ? true : false,
             authorizer:
@@ -230,7 +239,7 @@ export class ApiGateway extends aws_apigateway.RestApi {
                       schema: method.requestSchema,
                     }
                   )
-                : aws_apigateway.Model.EMPTY_MODEL,
+                : cdkLib.aws_apigateway.Model.EMPTY_MODEL,
             },
             methodResponses: [
               {
@@ -250,7 +259,7 @@ export class ApiGateway extends aws_apigateway.RestApi {
                           schema: method.responseSchema,
                         }
                       )
-                    : aws_apigateway.Model.EMPTY_MODEL,
+                    : cdkLib.aws_apigateway.Model.EMPTY_MODEL,
                 },
               },
               {

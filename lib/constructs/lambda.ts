@@ -1,18 +1,16 @@
-import { aws_lambda_nodejs, Duration, RemovalPolicy,  } from "aws-cdk-lib";
-import { Architecture, Runtime } from "aws-cdk-lib/aws-lambda";
-import { RetentionDays, LogGroup } from "aws-cdk-lib/aws-logs";
-import { Construct } from "constructs";
+import * as cdkLib from "aws-cdk-lib";
+import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as logs from "aws-cdk-lib/aws-logs";
+import * as constructs from "constructs";
 import { join } from "path";
-
-
 
 export type LambdaDefinition = {
   entry: string;
 };
 
-type LambdaProps = aws_lambda_nodejs.NodejsFunctionProps;
+type LambdaProps = cdkLib.aws_lambda_nodejs.NodejsFunctionProps;
 
-export class BaseLambda extends aws_lambda_nodejs.NodejsFunction {
+export class BaseLambda extends cdkLib.aws_lambda_nodejs.NodejsFunction {
   /**
    * Constructor for the BaseLambda class.
    *
@@ -22,43 +20,47 @@ export class BaseLambda extends aws_lambda_nodejs.NodejsFunction {
    *
    * @see {@link https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_lambda_nodejs-readme.html#customizing-aws-lambda-function}
    */
-  constructor(scope: Construct, id: string, props: LambdaProps) {
-    const {environment, ...rest} = props;
+  constructor(scope: constructs.Construct, id: string, props: LambdaProps) {
+    const { environment, ...rest } = props;
     const defaultProps: LambdaProps = {
-      runtime: Runtime.NODEJS_22_X,
-      architecture: Architecture.ARM_64,
+      runtime: lambda.Runtime.NODEJS_22_X,
+      architecture: lambda.Architecture.ARM_64,
       memorySize: 512,
-      timeout: Duration.minutes(2),
-      logRetention: RetentionDays.TWO_WEEKS,
+      timeout: cdkLib.Duration.minutes(2),
+      logRetention: logs.RetentionDays.TWO_WEEKS,
       handler: "handler",
       // entry: "src/index.ts", para completar luego
-      depsLockFilePath: join(import.meta.dirname, "../../functions/package-lock.json"),
+      depsLockFilePath: join(
+        import.meta.dirname,
+        "../../functions/package-lock.json"
+      ),
       environment: {
         TZ: "America/Argentina/Buenos_Aires",
-        ...environment
+        ...environment,
       },
       bundling: {
         // minify: true,
         externalModules: ["@aws-sdk/*"],
         target: "ESNext",
-        logLevel: aws_lambda_nodejs.LogLevel.DEBUG,
-        charset: aws_lambda_nodejs.Charset.UTF8,
-        format: aws_lambda_nodejs.OutputFormat.ESM,
+        logLevel: cdkLib.aws_lambda_nodejs.LogLevel.DEBUG,
+        charset: cdkLib.aws_lambda_nodejs.Charset.UTF8,
+        format: cdkLib.aws_lambda_nodejs.OutputFormat.ESM,
         mainFields: ["module", "main"],
-        esbuildArgs:{
+        esbuildArgs: {
           "--tree-shaking": "true",
         },
-        banner: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
+        banner:
+          "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
       },
     };
     super(scope, id, {
       ...defaultProps,
       ...rest,
     });
-    new LogGroup(this, `${id}-LogGroup`, {
+    new logs.LogGroup(this, `${id}-LogGroup`, {
       logGroupName: `/aws/lambda/${this.functionName}`,
-      retention: RetentionDays.TWO_WEEKS,
-      removalPolicy: RemovalPolicy.DESTROY
+      retention: logs.RetentionDays.TWO_WEEKS,
+      removalPolicy: cdkLib.RemovalPolicy.DESTROY,
     });
   }
 }

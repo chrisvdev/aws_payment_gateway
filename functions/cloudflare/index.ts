@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { RestLambdaDefinition } from "@cdk_lib/constructs/rest_lambda";
+import type { RestLambdaDefinition } from "../../lib/constructs/rest_lambda.ts";
 
 const __dirname = import.meta.dirname;
 

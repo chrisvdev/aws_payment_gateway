@@ -1,0 +1,54 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "nodenext",
+    "lib": ["ESNext"],
+    "moduleResolution": "nodenext",
+    "declaration": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noImplicitThis": false,
+    "alwaysStrict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": false,
+    "inlineSourceMap": true,
+    "inlineSources": true,
+    "experimentalDecorators": true,
+    "strictPropertyInitialization": false,
+    "esModuleInterop": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "emitDecoratorMetadata": true,
+    "preserveConstEnums": true,
+    "sourceMap": false,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "typeRoots": ["./node_modules/@types"],
+    "baseUrl": "./",
+    "rootDir": "./",
+    "paths": {
+      "@cdk_lib/*": ["./lib/*"],
+      "@cdk_constructs/*": ["./lib/constructs/*"],
+      "@functions/*": ["./functions/*"],
+      "@lib/*": ["./functions/lib/*"]
+    }
+  },
+  "include": ["bin/**/*.ts", "lib/**/*.ts", "functions/**/*.ts"],
+  "exclude": ["node_modules", "cdk.out", "**/*.test.ts"],
+  "ts-node": {
+    "require": ["tsconfig-paths/register"],
+    "esm": true,
+    "files": true,
+    "transpileOnly": true,
+    "experimentalResolver": true,
+    "experimentalSpecifierResolution": "node",
+    "compiler": "typescript",
+    "compilerOptions": {
+      "module": "nodenext"
+    }
+  }
+}

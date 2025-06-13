@@ -1,12 +1,15 @@
-import { Construct } from "constructs";
-import { BaseLambda } from "@cdk_constructs/lambda";
-import { type ApiGateway } from "@cdk_constructs/api_gateway";
-import { aws_lambda_nodejs } from "aws-cdk-lib";
-import { RestAPI } from "@cdk_constructs/api_gateway";
+import * as constructs from "constructs";
+import { BaseLambda } from "./lambda.ts";
+import { type ApiGateway } from "./api_gateway.ts";
+import * as cdkLib from "aws-cdk-lib";
+import { type RestAPI } from "./api_gateway.ts";
 
-export type RestLambdaDefinition = { entry: string, restAPI: RestAPI }
+export type RestLambdaDefinition = { entry: string; restAPI: RestAPI };
 
-type RestLambdaProps = aws_lambda_nodejs.NodejsFunctionProps & { apiGateway: ApiGateway, restAPI: RestAPI };
+type RestLambdaProps = cdkLib.aws_lambda_nodejs.NodejsFunctionProps & {
+  apiGateway: ApiGateway;
+  restAPI: RestAPI;
+};
 
 export class RestLambda extends BaseLambda {
   /**
@@ -20,12 +23,15 @@ export class RestLambda extends BaseLambda {
    *   the lambda function, the ApiGateway to integrate with, and the RestAPI
    *   to add the lambda function to.
    */
-  constructor(scope: Construct, id: string, { apiGateway, restAPI, ...props }: RestLambdaProps) {
+  constructor(
+    scope: constructs.Construct,
+    id: string,
+    { apiGateway, restAPI, ...props }: RestLambdaProps
+  ) {
     super(scope, id, {
       ...props,
-      environment: {
-      },
+      environment: {},
     });
-    apiGateway.addLambdaIntegration(this,restAPI);
+    apiGateway.addLambdaIntegration(this, restAPI);
   }
 }

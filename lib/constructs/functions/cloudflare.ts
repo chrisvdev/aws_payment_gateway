@@ -1,8 +1,7 @@
 import { Construct } from "constructs";
-import { BaseLambda } from "@cdk_constructs/lambda";
-import cloudflareDefinition from "@functions/cloudflare";
-import { type ApiGateway } from "@cdk_constructs/api_gateway";
-import { RestLambda } from "@cdk_constructs/rest_lambda";
+import cloudflareDefinition from "../../../functions/cloudflare/index.ts";
+import { type ApiGateway } from "../api_gateway.ts";
+import { RestLambda } from "../rest_lambda.ts";
 // import * as lambda from 'aws-cdk-lib/aws-lambda'
 
 type CloudflareLambdaProps = { apiGateway: ApiGateway };

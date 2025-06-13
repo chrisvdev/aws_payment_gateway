@@ -1,5 +1,5 @@
 import path from "node:path";
-import { type LambdaDefinition } from "@cdk_lib/constructs/lambda";
+import { type LambdaDefinition } from "../../lib/constructs/lambda.ts";
 
 const __dirname = import.meta.dirname;
 

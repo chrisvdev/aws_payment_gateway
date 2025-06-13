@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-import * as cdk from 'aws-cdk-lib';
-import { PGStack } from '../lib/pg-stack.ts';
+import * as cdkLib from "aws-cdk-lib";
+import { PGStack } from "../lib/pg-stack.ts";
 
-const app = new cdk.App();
-new PGStack(app, 'PGStack', {
+const app = new cdkLib.App();
+new PGStack(app, "PGStack", {
   /* If you don't specify 'env', this stack will be environment-agnostic.
    * Account/Region-dependent features and context lookups will not work,
    * but a single synthesized template can be deployed anywhere. */
@@ -14,7 +14,7 @@ new PGStack(app, 'PGStack', {
 
   /* Uncomment the next line if you know exactly what Account and Region you
    * want to deploy the stack to. */
-  env: { account: '807385937075', region: 'us-east-1' },
+  env: { account: "807385937075", region: "us-east-1" },
 
   /* For more information, see https://docs.aws.amazon.com/cdk/latest/guide/environments.html */
 });
