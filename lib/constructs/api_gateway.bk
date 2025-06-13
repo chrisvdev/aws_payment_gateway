@@ -1,0 +1,290 @@
+import { aws_apigateway, CfnOutput, RemovalPolicy, Stack } from "aws-cdk-lib";
+import { Construct } from "constructs";
+import { ARecord, IHostedZone, RecordTarget } from "aws-cdk-lib/aws-route53";
+import { ICertificate } from "aws-cdk-lib/aws-certificatemanager";
+import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
+import { type IFunction } from "aws-cdk-lib/aws-lambda";
+import {
+  Cors,
+  JsonSchema,
+  JsonSchemaType,
+  Model,
+} from "aws-cdk-lib/aws-apigateway";
+import { ServicePrincipal } from "aws-cdk-lib/aws-iam";
+import { ApiGateway as ApiGatewayTarget } from "aws-cdk-lib/aws-route53-targets";
+import { LambdaAuthorizer } from "./lambda_apigateway_authorizer";
+
+export interface ApiGatewayProps extends aws_apigateway.RestApiProps {
+  customDomain?: {
+    certificate: ICertificate;
+    hostedZone: IHostedZone;
+    subdomain: string;
+  };
+}
+
+type HTTPMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+
+export type Method = {
+  type: HTTPMethod;
+  APIKeyRequired?: boolean;
+  authorizer?: boolean;
+  requestSchema?: JsonSchema | null;
+  responseSchema?: JsonSchema | null;
+};
+
+export type Methods = Method[];
+
+export type Path = string;
+
+export type RestAPI = Record<Path, Methods>;
+
+export class ApiGateway extends aws_apigateway.RestApi {
+  readonly requestValidatorBody: aws_apigateway.RequestValidator;
+  readonly requestValidatorParams: aws_apigateway.RequestValidator;
+  private badRequestErrorListDTO: Model;
+  private errorDTO: Model;
+  private authorizer: LambdaAuthorizer | null = null;
+  private api: RestAPI = {};
+  /**
+   * Constructor for ApiGateway.
+   *
+   * Creates a new ApiGateway instance and sets up an access log group and
+   * a usage plan for the API.
+   *
+   * @param scope The scope to create the ApiGateway in.
+   * @param id The ID of the ApiGateway.
+   * @param props The properties of the ApiGateway, such as the API name and
+   *   description.
+   */
+  constructor(scope: Construct, id: string, props: ApiGatewayProps) {
+    const logGroup = new LogGroup(scope, `${id}-ApiGatewayAccessLogs`, {
+      logGroupName: `/aws/apigateway/${id}-ApiGatewayAccessLogs`,
+      removalPolicy: RemovalPolicy.DESTROY, // útil para desarrollo
+      retention: RetentionDays.TWO_WEEKS,
+    });
+    super(scope, id, {
+      ...props,
+      deployOptions: {
+        accessLogDestination: new aws_apigateway.LogGroupLogDestination(
+          logGroup
+        ),
+        accessLogFormat: aws_apigateway.AccessLogFormat.jsonWithStandardFields({
+          caller: true,
+          httpMethod: true,
+          ip: true,
+          protocol: true,
+          requestTime: true,
+          resourcePath: true,
+          responseLength: true,
+          status: true,
+          user: true,
+        }),
+      },
+      cloudWatchRole: true,
+    });
+    const apiKey = this.addApiKey(`${id}-api-key`);
+    const usagePlan = new aws_apigateway.UsagePlan(this, `${id}-usage-plan`, {
+      apiStages: [
+        {
+          api: this,
+          stage: this.deploymentStage,
+        },
+      ],
+    });
+    usagePlan.addApiKey(apiKey);
+
+    this.badRequestErrorListDTO = this.addModel("BadRequestErrorListDTO", {
+      contentType: "application/json",
+      schema: {
+        type: JsonSchemaType.OBJECT,
+        properties: {
+          errors: {
+            type: JsonSchemaType.ARRAY,
+            items: {
+              type: JsonSchemaType.OBJECT,
+              properties: {
+                code: {
+                  type: JsonSchemaType.STRING,
+                },
+                message: {
+                  type: JsonSchemaType.STRING,
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    this.errorDTO = this.addModel("ErrorDTO", {
+      contentType: "application/json",
+      schema: {
+        type: JsonSchemaType.OBJECT,
+        properties: {
+          code: {
+            type: JsonSchemaType.STRING,
+          },
+          message: {
+            type: JsonSchemaType.STRING,
+          },
+        },
+      },
+    });
+    this.requestValidatorBody = this.addRequestValidator(
+      `${id}-request-validator-body`,
+      {
+        validateRequestBody: true,
+        validateRequestParameters: false,
+      }
+    );
+    this.requestValidatorParams = this.addRequestValidator(
+      `${id}-request-validator-params`,
+      {
+        validateRequestBody: false,
+        validateRequestParameters: true,
+      }
+    );
+
+    if (props.customDomain) {
+      const customDomain = `${props.customDomain.subdomain}.${props.customDomain.hostedZone.zoneName}`;
+      this.addDomainName(`${id}-custom-domain`, {
+        domainName: customDomain,
+        certificate: props.customDomain.certificate,
+      });
+      new ARecord(scope, `${id}-custom-domain-a-record`, {
+        zone: props.customDomain.hostedZone,
+        recordName: props.customDomain.subdomain,
+        target: RecordTarget.fromAlias(new ApiGatewayTarget(this)),
+      });
+      new CfnOutput(this, `${id}-ApiGatewayCustomURL`, {
+        value: `https://${customDomain}`,
+      });
+    }
+  }
+
+  set lambdaAuthorizer(lambdaAuthorizer: LambdaAuthorizer) {
+    this.authorizer = lambdaAuthorizer;
+  }
+
+  get restAPI (): RestAPI {
+    return this.api
+  }
+
+  /**
+   * Adds a lambda function as an integration to the API with the given
+   * RestAPI. The RestAPI is an object where the keys are paths and the values
+   * are arrays of methods. Each method is an object with the following
+   * properties:
+   * - type: the HTTP method for the resource
+   * - APIKeyRequired: whether the API key is required for the resource
+   * - schema: the schema for the request body, if any
+   * @param lambda the lambda function to add as an integration
+   * @param RestAPI the RestAPI to add the lambda function to
+   */
+  addLambdaIntegration(lambda: IFunction, RestAPI: RestAPI) {
+    Object.assign(this.api, RestAPI);
+    lambda.addPermission(`${lambda.node.id}-Invoke`, {
+      principal: new ServicePrincipal("apigateway.amazonaws.com"),
+      sourceArn: this.arnForExecuteApi(),
+      action: "lambda:InvokeFunction",
+    });
+    const responseParameters = {
+      "method.response.header.Access-Control-Allow-Headers": true,
+      "method.response.header.Access-Control-Allow-Methods": true,
+      "method.response.header.Access-Control-Allow-Origin": true,
+    };
+    for (const [path, methods] of Object.entries(RestAPI)) {
+      const resource = this.root.resourceForPath(path);
+      resource.addCorsPreflight({
+        allowOrigins: Cors.ALL_ORIGINS,
+        allowMethods: Cors.ALL_METHODS,
+        allowHeaders: [
+          "Content-Type",
+          "Authorization",
+          "X-Amz-Date",
+          "X-Amz-Security-Token",
+          "X-Amz-User-Agent",
+          "X-Api-Key",
+          "x-pg-token",
+        ],
+        allowCredentials: true,
+      });
+      for (const method of methods) {
+        resource.addMethod(
+          method.type,
+          new aws_apigateway.LambdaIntegration(lambda, { proxy: true }),
+          {
+            apiKeyRequired: method.APIKeyRequired ? true : false,
+            authorizer:
+              this.authorizer && method.authorizer
+                ? this.authorizer
+                : undefined,
+            requestValidator: method.requestSchema
+              ? method.type === "GET"
+                ? this.requestValidatorParams
+                : this.requestValidatorBody
+              : undefined,
+            requestModels: {
+              "application/json": method.requestSchema
+                ? this.addModel(
+                    `${path
+                      .split("/")
+                      .map((e) => e.charAt(0).toUpperCase() + e.slice(1))
+                      .join("")}${
+                      method.type.charAt(0).toUpperCase() + method.type.slice(1)
+                    }`.slice(-50),
+                    {
+                      schema: method.requestSchema,
+                    }
+                  )
+                : aws_apigateway.Model.EMPTY_MODEL,
+            },
+            methodResponses: [
+              {
+                statusCode: "200",
+                responseParameters,
+                responseModels: {
+                  "application/json": method.responseSchema
+                    ? this.addModel(
+                        `${path
+                          .split("/")
+                          .map((e) => e.charAt(0).toUpperCase() + e.slice(1))
+                          .join("")}${
+                          method.type.charAt(0).toUpperCase() +
+                          method.type.slice(1)
+                        }`.slice(-50),
+                        {
+                          schema: method.responseSchema,
+                        }
+                      )
+                    : aws_apigateway.Model.EMPTY_MODEL,
+                },
+              },
+              {
+                statusCode: "400",
+                responseParameters,
+                responseModels: {
+                  "application/json": this.badRequestErrorListDTO,
+                },
+              },
+              {
+                statusCode: "403",
+                responseParameters,
+                responseModels: {
+                  "application/json": this.errorDTO,
+                },
+              },
+              {
+                statusCode: "409",
+                responseParameters,
+                responseModels: {
+                  "application/json": this.errorDTO,
+                },
+              },
+            ],
+          }
+        );
+      }
+    }
+  }
+}

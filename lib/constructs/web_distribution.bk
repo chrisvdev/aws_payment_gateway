@@ -1,0 +1,169 @@
+import {
+  StackProps,
+  Fn,
+  CfnOutput,
+  Duration,
+  RemovalPolicy,
+} from "aws-cdk-lib";
+import { Bucket, BucketAccessControl, StorageClass } from "aws-cdk-lib/aws-s3";
+import {
+  Distribution,
+  ViewerProtocolPolicy,
+  CachePolicy,
+  AllowedMethods,
+  OriginProtocolPolicy,
+  OriginRequestPolicy,
+  OriginRequestCookieBehavior,
+  OriginRequestQueryStringBehavior,
+  OriginRequestHeaderBehavior,
+  CacheHeaderBehavior,
+  BehaviorOptions,
+} from "aws-cdk-lib/aws-cloudfront";
+import { HttpOrigin } from "aws-cdk-lib/aws-cloudfront-origins";
+import { type ICertificate } from "aws-cdk-lib/aws-certificatemanager";
+import { BucketDeployment, Source } from "aws-cdk-lib/aws-s3-deployment";
+import { Construct } from "constructs";
+import { ARecord, RecordTarget, IHostedZone } from "aws-cdk-lib/aws-route53";
+import { CloudFrontTarget } from "aws-cdk-lib/aws-route53-targets";
+import { ApiGateway } from "./api_gateway";
+
+interface WebDistributionProps extends StackProps {
+  bucket: Bucket;
+  apiGateway: ApiGateway;
+  customDomain: {
+    certificate: ICertificate;
+    hostedZone: IHostedZone;
+    subdomain: string;
+  };
+}
+
+const baseDomain = "cloud.chrisvdev.com";
+
+export class WebDistribution extends Construct {
+  /**
+   * Creates a new WebDistribution instance.
+   *
+   * This construct creates a CloudFront distribution that serves a static website
+   * from the given S3 bucket and an API Gateway REST API. It also creates an
+   * alias record in a Route 53 hosted zone and deploys the static website to the
+   * S3 bucket.
+   *
+   * @param scope The scope to create the WebDistribution in.
+   * @param id The ID of the WebDistribution.
+   * @param props The properties of the WebDistribution, such as the S3 bucket
+   *   to serve, the API Gateway REST API to integrate with, the SSL/TLS
+   *   certificate to use, and the subdomain to use for the alias record.
+   */
+  constructor(scope: Construct, id: string, props: WebDistributionProps) {
+    super(scope, id);
+
+    const {
+      bucket,
+      apiGateway,
+      customDomain: { certificate, hostedZone, subdomain },
+    } = props;
+
+    const loggingBucket = new Bucket(this, `${id}-CloudFrontLogsBucket`, {
+      removalPolicy: RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+      accessControl: BucketAccessControl.LOG_DELIVERY_WRITE,
+    });
+
+    loggingBucket.addLifecycleRule({
+      enabled: true,
+      expiration: Duration.days(30),
+      transitions: [
+        {
+          storageClass: StorageClass.INTELLIGENT_TIERING,
+          transitionAfter: Duration.days(7),
+        },
+      ],
+    });
+
+    const additionalBehaviors: Record<string, BehaviorOptions> = {};
+    const apiGatewayDomain = Fn.select(2, Fn.split("/", apiGateway.url));
+    const apiGatewayStage = Fn.select(3, Fn.split("/", apiGateway.url));
+    const originRequestPolicy = new OriginRequestPolicy(
+      this,
+      "APIOriginRequestPolicy",
+      {
+        originRequestPolicyName: "APIOriginRequestPolicy",
+        cookieBehavior: OriginRequestCookieBehavior.all(),
+        queryStringBehavior: OriginRequestQueryStringBehavior.all(),
+        headerBehavior: OriginRequestHeaderBehavior.allowList(
+          "Content-Type",
+          "Accept",
+          "User-Agent",
+          "x-pg-token"
+        ),
+        comment: "Origin request policy for API Gateway",
+      }
+    );
+    const cachePolicy = new CachePolicy(this, "APIOriginCachePolicy", {
+      cachePolicyName: "APIOriginCachePolicy",
+      comment: "Cache policy for API Gateway",
+      defaultTtl: Duration.seconds(1),
+      minTtl: Duration.seconds(1),
+      maxTtl: Duration.seconds(5),
+      headerBehavior: CacheHeaderBehavior.allowList(
+        "Content-Type",
+        "Accept",
+        "User-Agent",
+        "x-pg-token"
+      ),
+    });
+
+    Object.entries(apiGateway.restAPI).forEach(([path, methods]) => {
+      additionalBehaviors[path] = {
+        origin: new HttpOrigin(apiGatewayDomain, {
+          originPath: `/${apiGatewayStage}${path}`,
+        }),
+        viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        originRequestPolicy,
+        cachePolicy,
+        allowedMethods: AllowedMethods.ALLOW_ALL,
+        compress: true,
+      };
+    });
+
+    // Create CloudFront distribution
+    const distribution = new Distribution(this, "WebDistribution", {
+      logBucket: loggingBucket,
+      logFilePrefix: "cloudfront-logs/",
+      defaultBehavior: {
+        origin: new HttpOrigin(bucket.bucketWebsiteDomainName, {
+          protocolPolicy: OriginProtocolPolicy.HTTP_ONLY,
+        }),
+        viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        cachePolicy: CachePolicy.CACHING_OPTIMIZED,
+        allowedMethods: AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
+        compress: true,
+      },
+      additionalBehaviors,
+      domainNames: [`${subdomain}.${baseDomain}`],
+      certificate: certificate,
+    });
+
+    new ARecord(this, "PgAliasRecord", {
+      zone: hostedZone,
+      recordName: subdomain,
+      target: RecordTarget.fromAlias(new CloudFrontTarget(distribution)),
+    });
+
+    // Deploy static content to S3 bucket
+    new BucketDeployment(this, "DeployStaticWebsite", {
+      sources: [Source.asset("./frontend/dist")],
+      destinationBucket: bucket,
+      distribution,
+      distributionPaths: ["/*"],
+    });
+
+    // Output CloudFront URLs
+    new CfnOutput(this, "CloudFrontURL", {
+      value: `https://${distribution.domainName}`,
+    });
+    new CfnOutput(this, "CloudFrontAliasURL", {
+      value: `https://${subdomain}.${baseDomain}`,
+    });
+  }
+}
