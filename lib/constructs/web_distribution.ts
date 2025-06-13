@@ -66,7 +66,6 @@ export class WebDistribution extends constructs.Construct {
       ],
     });
 
-    const additionalBehaviors: Record<string, cloudfront.BehaviorOptions> = {};
     const apiGatewayDomain = cdkLib.Fn.select(
       2,
       cdkLib.Fn.split("/", apiGateway.url)
@@ -111,27 +110,28 @@ export class WebDistribution extends constructs.Construct {
         enableAcceptEncodingBrotli: true,
         enableAcceptEncodingGzip: true,*/ /*
       }
-    ) */
+    )
+    */
 
+    /*
     // API Gateway REST API behavior
-    Object.entries(apiGateway.restAPI).forEach(([path, methods]) => {
-      additionalBehaviors[path] = {
-        origin: new cloudfrontOrigins.HttpOrigin(apiGatewayDomain, {
-          originPath: `/${apiGatewayStage}`,
-        }),
-        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.HTTPS_ONLY,
-        originRequestPolicy:
-          cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
-        responseHeadersPolicy:
-          cloudfront.ResponseHeadersPolicy.CORS_ALLOW_ALL_ORIGINS,
-        cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
-        allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
-        compress: true,
-      };
-    });
+    const apiGatewayBehavior: cloudfront.BehaviorOptions = {
+      origin: new cloudfrontOrigins.HttpOrigin(apiGatewayDomain, {
+        originPath: `/${apiGatewayStage}`,
+      }),
+      viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.HTTPS_ONLY,
+      originRequestPolicy:
+        cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+      responseHeadersPolicy:
+        cloudfront.ResponseHeadersPolicy.CORS_ALLOW_ALL_ORIGINS,
+      cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+      allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+      compress: true,
+    };
+    */
 
     // S3 Static Website behavior
-    const defaultBehavior: cloudfront.BehaviorOptions = {
+    const s3Behavior: cloudfront.BehaviorOptions = {
       origin: new cloudfrontOrigins.HttpOrigin(bucket.bucketWebsiteDomainName, {
         protocolPolicy: cloudfront.OriginProtocolPolicy.HTTP_ONLY,
       }),
@@ -141,12 +141,24 @@ export class WebDistribution extends constructs.Construct {
       compress: true,
     };
 
+    /*
+    const additionalBehaviors: Record<string, cloudfront.BehaviorOptions> = {};
+
+    // API Gateway REST API behavior for additional paths
+    Object.entries(apiGateway.restAPI).forEach(([path, methods]) => {
+      additionalBehaviors[path] = apiGatewayBehavior;
+    });
+
+    // S3 Static Website behavior for additional paths
+    additionalBehaviors["/*"] = s3Behavior;
+    */
+
     // Create CloudFront distribution
     const distribution = new cloudfront.Distribution(this, "WebDistribution", {
       logBucket: loggingBucket,
       logFilePrefix: "cloudfront-logs/",
-      defaultBehavior,
-      additionalBehaviors,
+      defaultBehavior: s3Behavior,
+      // additionalBehaviors,
       domainNames: [`${subdomain}.${baseDomain}`],
       certificate: certificate,
       comment: `Web distribution for ${subdomain}.${baseDomain}`,
