@@ -7,6 +7,8 @@ import { ApiGateway } from "./constructs/api_gateway.ts";
 import { StaticS3Site } from "./constructs/static_s3_site.ts";
 import { WebDistribution } from "./constructs/web_distribution.ts";
 import { ApiGatewayAuthorizer } from "./constructs/functions/apig_authorizer.ts";
+import { ParameterStore } from "./constructs/parameter_store.ts";
+import environment from "../utils/environment.ts";
 /* 
 import { Rule, Schedule } from "aws-cdk-lib/aws-events";
 import { LambdaFunction } from "aws-cdk-lib/aws-events-targets";
@@ -15,6 +17,10 @@ import { LambdaFunction } from "aws-cdk-lib/aws-events-targets";
 export class PGStack extends BaseStack {
   constructor(scope: constructs.Construct, id: string, props?: BaseStackProps) {
     super(scope, id, props);
+
+    const parameterStore = new ParameterStore(this, "ParameterStore");
+
+    parameterStore.loadParameters(environment);
 
     const apiGateway = new ApiGateway(this, "PGApi", {
       restApiName: "pg_api",
