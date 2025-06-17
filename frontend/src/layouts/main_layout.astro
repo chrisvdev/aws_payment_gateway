@@ -1,0 +1,38 @@
+---
+import environment from "@/utils/environment.ts";
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="generator" content={Astro.generator} />
+    <script
+      src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onloadTurnstileCallback"
+      defer></script>
+    <title>Astro</title>
+  </head>
+
+  <body>
+    <div id="turnstileWidget"></div>
+    <slot />
+    <script
+      is:inline
+      define:vars={{
+        PUBLIC_CLOUDFLARE_SITE_KEY: environment.PUBLIC_CLOUDFLARE_SITE_KEY,
+      }}
+    >
+      window.onloadTurnstileCallback = function () {
+        console.log("Turnstile function called");
+        turnstile.render("#turnstileWidget", {
+          sitekey: PUBLIC_CLOUDFLARE_SITE_KEY,
+          callback: function (token) {
+            console.log(`Challenge Success ${token}`);
+          },
+        });
+      };
+    </script>
+  </body>
+</html>
