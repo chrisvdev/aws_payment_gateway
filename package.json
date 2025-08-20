@@ -25,6 +25,6 @@
     "aws-cdk-lib": "2.200.1",
     "constructs": "^10.0.0",
     "esbuild": "^0.25.3",
-    "json-schema-to-ts": "^3.1.1"
+    "zod": "^4.0.17"
   }
 }

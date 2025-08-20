@@ -1,8 +1,8 @@
-import { ScheduledEvent } from 'aws-lambda';
+import { lambda, logger } from "../lib/lambda.ts";
 
-export const handler = async (event: ScheduledEvent): Promise<void> => {
-  const timestamp = new Date().toISOString();
-  console.log('Ran at', timestamp);
-
-  return;
-};
+export const handler = lambda.scheduledHandler(
+  async (event) => {
+    logger.info("Scheduled event triggered", { event });
+    return;
+  }
+);

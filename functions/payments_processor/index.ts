@@ -1,6 +1,7 @@
 import path from "node:path";
 import { type LambdaDefinition } from "../../lib/constructs/lambda.ts";
 
+// @ts-expect-error
 const __dirname = import.meta.dirname;
 
 const paymentProcessorDefinition: LambdaDefinition = {

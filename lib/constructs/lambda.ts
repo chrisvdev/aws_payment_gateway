@@ -3,6 +3,7 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as constructs from "constructs";
 import { join } from "path";
+import { getConfig } from "../config.ts";
 
 export type LambdaDefinition = {
   entry: string;
@@ -21,6 +22,7 @@ export class BaseLambda extends cdkLib.aws_lambda_nodejs.NodejsFunction {
    * @see {@link https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_lambda_nodejs-readme.html#customizing-aws-lambda-function}
    */
   constructor(scope: constructs.Construct, id: string, props: LambdaProps) {
+    const { app: { name } } = getConfig(scope);
     const { environment, ...rest } = props;
     const defaultProps: LambdaProps = {
       runtime: lambda.Runtime.NODEJS_22_X,
@@ -31,11 +33,21 @@ export class BaseLambda extends cdkLib.aws_lambda_nodejs.NodejsFunction {
       handler: "handler",
       // entry: "src/index.ts", para completar luego
       depsLockFilePath: join(
+        // @ts-ignore
         import.meta.dirname,
         "../../functions/package-lock.json"
       ),
       environment: {
-        TZ: "America/Argentina/Buenos_Aires",
+        TZ: "America/Argentina/Buenos_Aires",       POWERTOOLS_SERVICE_NAME: name,
+        POWERTOOLS_METRICS_NAMESPACE: name,
+        POWERTOOLS_METRICS_FUNCTION_NAME: id,
+        POWERTOOLS_METRICS_DISABLED: "false",
+        POWERTOOLS_LOG_LEVEL: "DEBUG", // DEBUG, INFO, WARN, ERROR, CRITICAL, SILENT
+        POWERTOOLS_LOGGER_SAMPLE_RATE: "1.0", // 0.0 to 1.0
+        POWERTOOLS_TRACE_ENABLED: "true",
+        POWERTOOLS_TRACER_CAPTURE_HTTPS_REQUESTS: "true",
+        POWERTOOLS_TRACER_CAPTURE_RESPONSE: "true",
+        POWERTOOLS_TRACER_CAPTURE_ERROR: "true",
         ...environment,
       },
       bundling: {

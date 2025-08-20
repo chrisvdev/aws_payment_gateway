@@ -1,11 +1,15 @@
-import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { lambda } from "../lib/lambda.ts";
+import { routes } from "./routes.ts";
+import { productsGet } from "./handlers/products_get.ts";
+import { purchasePatch } from "./handlers/purchase_patch.ts";
+import { purchasePost } from "./handlers/purchase_post.ts";
+import { purchaseGet } from "./handlers/purchase_get.ts";
 
-export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  console.log('event', JSON.stringify(event));
-  const response = {
-    statusCode: 200,
-    body: JSON.stringify({ message: 'Hello from Lambda!' }),
-  };
+const router = lambda.getRouter(routes);
 
-  return response;
-};
+router["/api/v1/operations/products"]["GET"] = productsGet;
+router["/api/v1/operations/purchase"]["PATCH"] = purchasePatch;
+router["/api/v1/operations/purchase"]["POST"] = purchasePost;
+router["/api/v1/operations/purchase"]["GET"] = purchaseGet;
+
+export const handler = lambda.RouterHandler(router);

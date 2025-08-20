@@ -8,6 +8,7 @@ import * as apigateway from "aws-cdk-lib/aws-apigateway";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as route53Targets from "aws-cdk-lib/aws-route53-targets";
 import { LambdaAuthorizer } from "./lambda_apigateway_authorizer.ts";
+import { z } from "zod"
 
 export interface ApiGatewayProps extends cdkLib.aws_apigateway.RestApiProps {
   customDomain?: {
@@ -20,14 +21,13 @@ export interface ApiGatewayProps extends cdkLib.aws_apigateway.RestApiProps {
 type HTTPMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 export type Method = {
-  type: HTTPMethod;
   APIKeyRequired?: boolean;
   authorizer?: boolean;
-  requestSchema?: apigateway.JsonSchema | null;
-  responseSchema?: apigateway.JsonSchema | null;
+  requestSchema?: apigateway.JsonSchema | z.core.JSONSchema.JSONSchema | null;
+  responseSchema?: apigateway.JsonSchema | z.core.JSONSchema.JSONSchema | null;
 };
 
-export type Methods = Method[];
+export type Methods = Partial<Record<HTTPMethod, Method>>;
 
 export type Path = string;
 
@@ -211,9 +211,9 @@ export class ApiGateway extends cdkLib.aws_apigateway.RestApi {
         ],
         allowCredentials: true,
       });
-      for (const method of methods) {
+      for (const [type, method] of Object.entries(methods)) {
         resource.addMethod(
-          method.type,
+          type,
           new cdkLib.aws_apigateway.LambdaIntegration(lambda, { proxy: true }),
           {
             apiKeyRequired: method.APIKeyRequired ? true : false,
@@ -222,23 +222,22 @@ export class ApiGateway extends cdkLib.aws_apigateway.RestApi {
                 ? this.authorizer
                 : undefined,
             requestValidator: method.requestSchema
-              ? method.type === "GET"
+              ? type === "GET"
                 ? this.requestValidatorParams
                 : this.requestValidatorBody
               : undefined,
             requestModels: {
               "application/json": method.requestSchema
                 ? this.addModel(
-                    `${path
-                      .split("/")
-                      .map((e) => e.charAt(0).toUpperCase() + e.slice(1))
-                      .join("")}${
-                      method.type.charAt(0).toUpperCase() + method.type.slice(1)
+                  `${path
+                    .split("/")
+                    .map((e) => e.charAt(0).toUpperCase() + e.slice(1))
+                    .join("")}${type.charAt(0).toUpperCase() + type.slice(1)
                     }`.slice(-50),
-                    {
-                      schema: method.requestSchema,
-                    }
-                  )
+                  {
+                    schema: method.requestSchema as apigateway.JsonSchema,
+                  }
+                )
                 : cdkLib.aws_apigateway.Model.EMPTY_MODEL,
             },
             methodResponses: [
@@ -248,17 +247,16 @@ export class ApiGateway extends cdkLib.aws_apigateway.RestApi {
                 responseModels: {
                   "application/json": method.responseSchema
                     ? this.addModel(
-                        `${path
-                          .split("/")
-                          .map((e) => e.charAt(0).toUpperCase() + e.slice(1))
-                          .join("")}${
-                          method.type.charAt(0).toUpperCase() +
-                          method.type.slice(1)
+                      `${path
+                        .split("/")
+                        .map((e) => e.charAt(0).toUpperCase() + e.slice(1))
+                        .join("")}${type.charAt(0).toUpperCase() +
+                        type.slice(1)
                         }`.slice(-50),
-                        {
-                          schema: method.responseSchema,
-                        }
-                      )
+                      {
+                        schema: method.responseSchema as apigateway.JsonSchema,
+                      }
+                    )
                     : cdkLib.aws_apigateway.Model.EMPTY_MODEL,
                 },
               },

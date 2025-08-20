@@ -2,7 +2,7 @@ process.loadEnvFile("./.env");
 
 const environment : Record<string, string> = {
   CLOUDFLARE_SITE_KEY: "",
-  CLOUDFLARE_SECRET_KET: ""
+  CLOUDFLARE_SECRET_KEY: ""
 };
 
 Object.entries(environment).forEach(([key, value]) => {
