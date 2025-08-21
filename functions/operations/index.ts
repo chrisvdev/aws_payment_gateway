@@ -2,7 +2,6 @@ import path from "node:path";
 import type { RestLambdaDefinition } from "../../lib/constructs/rest_lambda.ts";
 import { routes } from "./routes.ts";
 
-// @ts-expect-error
 const __dirname = import.meta.dirname;
 
 const operationsDefinition: RestLambdaDefinition = {

@@ -1,8 +1,8 @@
 ---
-import environment from "@/utils/environment.ts";
+import { CLOUDFLARE_SITE_KEY } from "astro:env/client";
 import MainLayout from "../layouts/main_layout.astro";
 ---
 
 <MainLayout>
-   <h1>{environment.PUBLIC_CLOUDFLARE_SITE_KEY}</h1>
+   <h1>{CLOUDFLARE_SITE_KEY}</h1>
 </MainLayout>

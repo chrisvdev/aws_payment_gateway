@@ -18,9 +18,9 @@ export class PGStack extends BaseStack {
   constructor(scope: constructs.Construct, id: string, props?: BaseStackProps) {
     super(scope, id, props);
 
-    const parameterStore = new ParameterStore(this, "ParameterStore");
-
-    parameterStore.loadParameters(environment);
+    const parameterStore = new ParameterStore(this, "ParameterStore", {
+      loadEnv: true,
+    });
 
     const apiGateway = new ApiGateway(this, "PGApi", {
       restApiName: "pg_api",
@@ -41,6 +41,7 @@ export class PGStack extends BaseStack {
 
     const cloudflareLambda = new CloudflareLambda(this, "CloudflareLambda", {
       apiGateway,
+      parameterStore,
     });
     const operationsLambda = new OperationsLambda(this, "OperationsLambda", {
       apiGateway,

@@ -7,6 +7,7 @@ import { captureLambdaHandler } from '@aws-lambda-powertools/tracer/middleware';
 import { parser } from '@aws-lambda-powertools/parser/middleware';
 import { ZodType } from 'zod';
 import middy, { type MiddyfiedHandler } from "@middy/core";
+import httpJsonBodyParser from '@middy/http-json-body-parser'
 import httpErrorHandler from '@middy/http-error-handler'
 import httpRouterHandler, { Method, Route } from '@middy/http-router'
 import type {
@@ -18,19 +19,45 @@ import type {
   APIGatewayAuthorizerResult,
   APIGatewayRequestAuthorizerHandler,
   ScheduledEvent,
-  Context
+  Context,
+  Callback
 } from 'aws-lambda';
-import type { RestAPI } from '../../lib/constructs/api_gateway';
+import type { RestAPI } from '../../lib/constructs/api_gateway.ts';
+
+export type APIGatewayProxyEventHeaders = {
+  Accept: string;
+  "Accept-Encoding": string;
+  "Cache-Control": string;
+  "Content-Type": string;
+  Host: string;
+  "User-Agent": string;
+  "X-Amzn-Trace-Id": string;
+  "X-Forwarded-For": string;
+  "X-Forwarded-Port": string;
+  "X-Forwarded-Proto": string;
+};
 
 export type APIGatewayProxyEventDefinition<T> = Omit<
   APIGatewayProxyEvent,
-  'body'
+  'body' | 'headers'
 > & {
-  body?: T;
+  body: T;
+  headers: APIGatewayProxyEventHeaders;
 }
-export type APIGatewayProxyEventHandler<T> = Handler<
+export type APIGatewayProxyResultDefinition<T> =
+  Partial<
+    Omit<
+      APIGatewayProxyResult,
+      'body'
+    >
+    & {
+      body: T;
+    }
+  >
+
+export type APIGatewayProxyEventHandler<T, R> = Handler<
   APIGatewayProxyEventDefinition<T>,
-  APIGatewayProxyResult
+  APIGatewayProxyResultDefinition<R>
 >;
 export type BaseHTTPLambdaHandler = Handler<
   APIGatewayProxyEvent,
@@ -88,22 +115,59 @@ class Lambda {
     this._metrics = new Metrics();
     this._tracer = new Tracer();
   }
+
   public handler(lambdaFunction: Handler): MiddyfiedHandler {
     return middy(lambdaFunction)
       .use(injectLambdaContext(this._logger))
       .use(logMetrics(this._metrics))
       .use(captureLambdaHandler(this._tracer))
   }
-  public HTTPEventHandler<T>(
-    lambdaFunction: APIGatewayProxyEventHandler<T>,
+
+  public HTTPEventHandler<T, R>(
+    lambdaFunction: APIGatewayProxyEventHandler<T, R>,
     schema?: ZodType<T>
   ): MiddyfiedHTTPEventHandler {
-    return schema ? this.handler(lambdaFunction)
+    const handler: BaseHTTPLambdaHandler = async (event, context, callback) => {
+      this._logger.info('event:', JSON.stringify(event));
+      const response = await lambdaFunction(
+        event as APIGatewayProxyEventDefinition<T>,
+        context,
+        callback as Callback<APIGatewayProxyResultDefinition<R>>
+      );
+      if (response && (response?.body || response?.statusCode)) {
+        const {
+          multiValueHeaders,
+          isBase64Encoded,
+          headers,
+          statusCode,
+          body
+        } = response;
+        return {
+          multiValueHeaders,
+          isBase64Encoded,
+          headers: { ...headers, "Content-Type": "application/json" },
+          statusCode: statusCode || 200,
+          body: body ?
+            (typeof body === 'string' ? body : JSON.stringify(body)) : '',
+        }
+      }
+      logger.error(
+        'Invalid response from lambda function',
+        JSON.stringify(response)
+      );
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ message: 'Internal Server Error' }),
+      }
+    }
+
+    return schema ? this.handler(handler)
       .use(parser({
         schema,
       }))
       .use(httpErrorHandler()) :
-      this.handler(lambdaFunction)
+      this.handler(handler)
+        .use(httpJsonBodyParser())
         .use(httpErrorHandler());
   }
   public authorizerHandler(
@@ -122,15 +186,20 @@ class Lambda {
     return this.handler(lambdaFunction);
   }
   public getRouter<T extends RestAPI>(routes: T): LambdaRouterType<T> {
+    type Router = Record<
+      string,
+      Record<
+        string,
+        MiddyfiedHTTPEventHandler | undefined
+      >
+    >
     const lambdaRoutes = {} as unknown as LambdaRouterType<T>;
     for (const [path, method] of Object.entries(routes)) {
       for (const type of Object.keys(method)) {
         if (!lambdaRoutes[path]) {
-          // @ts-expect-error
-          lambdaRoutes[path] = {};
+          (lambdaRoutes as Router)[path] = {};
         }
-        // @ts-expect-error
-        lambdaRoutes[path][type] = undefined;
+        (lambdaRoutes as Router)[path][type] = undefined;
       }
     }
     return lambdaRoutes;

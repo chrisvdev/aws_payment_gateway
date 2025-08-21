@@ -1,5 +1,5 @@
 ---
-import environment from "@/utils/environment.ts";
+import { CLOUDFLARE_SITE_KEY } from "astro:env/client";
 ---
 
 <!doctype html>
@@ -21,13 +21,13 @@ import environment from "@/utils/environment.ts";
     <script
       is:inline
       define:vars={{
-        PUBLIC_CLOUDFLARE_SITE_KEY: environment.PUBLIC_CLOUDFLARE_SITE_KEY,
+        CLOUDFLARE_SITE_KEY: CLOUDFLARE_SITE_KEY,
       }}
     >
       window.onloadTurnstileCallback = function () {
         console.log("Turnstile function called");
         turnstile.render("#turnstileWidget", {
-          sitekey: PUBLIC_CLOUDFLARE_SITE_KEY,
+          sitekey: CLOUDFLARE_SITE_KEY,
           callback: function (token) {
             console.log(`Challenge Success ${token}`);
           },
